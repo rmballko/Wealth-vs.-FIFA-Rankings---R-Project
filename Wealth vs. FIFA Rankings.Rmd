@@ -1,0 +1,159 @@
+---
+title: "Wealth vs. FIFA Rankings"
+author: "Rishabh Ballkooram"
+date: "2023-04-28"
+output: html_document
+---
+## Introduction
+In the World of sport, success on the international stage has often been associated with resources and support available. 
+Since I was young, I have been passionate about soccer, and it has become one of my favorite hobbies. As a personal project, I wanted to investigate whether soccer performance is affected by wealth. 
+
+
+## Data Gathering Process
+I decided to use GDP per Capita as the measure wealth and FIFA Men Soccer National Teams Rankings as the measure of performance. 
+The GDP per Capita dataset was retrieved from The World Bank website linked: [GDP Per Capita 2021](https://data.worldbank.org/indicator/NY.GDP.PCAP.CD?end=2021&name_desc=false&start=1960) as a CSV file
+The FIFA Men Soccer National Teams Rankings dataset was scraped from the FIFA website linked: [Men's Ranking](https://www.fifa.com/fifa-world-ranking/men?dateId=id13505) as a CSV file
+
+
+## Data Preparation/Cleaning Process
+
+Data preparation occurred both in the **CSV files** and in **R**.
+
+Since I was going to use the countries names as the join variables, I made sure that the countries names were spelled correctly and in the same manner in both CSV files.
+I also removed some of the unnecessary columns such as past GDP data as this analysis focuses on static data as of 2021. 
+
+In R, the only cleaning process needed was to get to rid of na values for GDP as certain values were not available from The World Bank.
+Both datasets were joined using inner join function and only the relevant columns were selected 
+
+
+## Uploading libraries and dataset
+```{r Libraries and Dataset}
+library(tidyverse)
+
+file_path_rankings <- "C:/Users/Rishabh/Desktop/Data Analytics Projects/R Projects/Wealth vs. FIFA Rankings/FIFA Socccer men's ranking - 23 December 2021.csv"
+
+file_path_GDP <- "C:/Users/Rishabh/Desktop/Data Analytics Projects/R Projects/Wealth vs. FIFA Rankings/GDP per Capital - 2021.csv"
+
+data_rankings <- read.csv(file_path_rankings)
+
+data_GDP <- read.csv(file_path_GDP)
+
+merged_data <- na.omit(inner_join(data_GDP, data_rankings, by = "Country") %>% 
+  select(Country, Continent, Rank, GDP_per_Capita_2021))
+
+glimpse(merged_data)
+
+```
+
+## Scatter Plot to examine correlation between GDP per capita and Ranking
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+ggplot(data = merged_data) + 
+  geom_point(mapping = aes(x = GDP_per_Capita_2021, y = Rank,
+                           color = Continent)) +
+  geom_smooth(mapping = aes(x = GDP_per_Capita_2021, y = Rank),
+              method = "lm", se = FALSE, color = "black") +
+  scale_y_reverse() +
+  scale_x_continuous(
+    breaks = c(0, 5000, 10000, 15000, 20000, 25000, 30000),
+    labels = c("$0", "$5K", "$10K", "$15K", "$20K", "$25K", "$30K"),
+    limits = c(0, 50000))
+  
+```
+
+## Interpretation of the Scatter Plot 
+
+The scatter plot data points are very spread out. The regression line is the middle of the plot with the slightest upward tilt. Both the scatter plot and regression line do not any clear and strong trend. We can deduce that since the regression line is slightly tilting upward there is a weak positive relationship between wealth and ranking. Let's calculate the correlation coefficent to get more insight on the relationship
+
+
+## Correlation Coefficent 
+
+```{r}
+
+correlation <- cor(merged_data$GDP_per_Capita_2021, merged_data$Rank)
+print(correlation)
+
+```
+## Interpretation of Correlation value: 
+
+**Disclaimer**
+
+The correlation function calculate the correlation coefficient as the two coefficients; GDP and Ranking increases. Since we are looking at better ranking(lower is better) and higher GDP, the correlation coefficent -0.1749 from above should be interpreted as 0.1749.
+
+
+A correlation coefficient of 0.1749 indicates a weak positive linear 
+relationship between the two variables, GDP and Ranking. In this 
+context, it means that as GDP per capita increases, the Rank tends to get slightly better,
+but the relationship is not strong.
+
+
+## Investigating the relationship from a broader perspective 
+
+Looking at the relationship between GDP and Ranking from a broader perspective can give us a better or alternate insight since we did not find any strong trend on an individual basics. We will use a stacked bar chart for this.
+
+First, we will classify the GDP per capita of the countries as low income, lower-middle income, upper-middle income and high income based on their respective GDP per capita as per criteria from World Bank [New World Bank country classifications by income level: 2021-2022](https://blogs.worldbank.org/opendata/new-world-bank-country-classifications-income-level-2021-2022)
+
+Second, we will categorize the FIFA ranking of the countries, as high rank(< 50), middle rank(50-150) and low rank(> 150). ~ I came up with the ranking.
+
+The categorization was undertaken by mutating the dataset in the code below:
+
+```{r}
+# Define the thresholds for classifying income levels and national team ranking 
+low_income_threshold <- 1045
+lower_middle_income_threshold <- 4095
+upper_middle_income_threshold <- 12695
+
+high_rank <- 50
+middle_rank <- 150 
+
+
+# Add the "Income_Category"  and "Rank_Category" columns to your dataset based on the thresholds
+merged_data_category <- merged_data %>%
+  mutate(Income_Category = case_when(
+    GDP_per_Capita_2021 <= low_income_threshold ~ "low income",
+    GDP_per_Capita_2021 > low_income_threshold & GDP_per_Capita_2021 <= lower_middle_income_threshold ~ "lower-middle income",
+    GDP_per_Capita_2021 > lower_middle_income_threshold & GDP_per_Capita_2021 <= upper_middle_income_threshold ~ "upper-middle income",
+    GDP_per_Capita_2021 > upper_middle_income_threshold ~ "high income"
+  )) %>% 
+  mutate(Rank_Category = case_when(
+    Rank <= high_rank ~ "high rank",
+    Rank > high_rank & Rank <= middle_rank ~ "middle rank",
+    Rank > middle_rank ~ "low rank"  
+  ))
+
+# Print the first few rows of the modified dataset
+head(merged_data_category)
+
+```
+
+
+# Plotting Stacked bar chart 
+
+```{r}
+# Create a summary dataset with counts for each combination of Rank_Category and Income_Category
+summary_data <- merged_data_category %>%
+  count(Rank_Category, Income_Category) %>%
+  rename(Count = n)
+
+
+# Create a stacked bar chart with ordered rank categories and counts on top of the bars
+ggplot(data = summary_data, aes(x = Rank_Category, y = Count, fill = Income_Category)) +
+  geom_bar(stat = "identity", position = "stack") +
+  geom_text(aes(label = Count), size = 3, position = position_stack(vjust = 0.5)) +
+  labs(x = "FIFA Rank Category", y = "Count of Countries", fill = "Income Category") +
+  theme_minimal()
+```
+
+## Interpretation of Stacked Bar Chart: 
+
+* On average, high income countries are kind of evenly spread out in all the rankings which the highest 
+presence in high rank categories. There is no low income countries in the high rank category
+
+* 20 out of 22 of low income countries are ranked in the middle rank category
+
+* More than half of lower-middle income countries are ranked in the middle rank category 
+
+*
+
+
+## Choose 
